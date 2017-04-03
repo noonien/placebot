@@ -30,20 +30,42 @@ func main() {
 		log.Fatal(err)
 	}
 
-	zones := MultiDrawer{}
+	var drawings MultiDrawer
 	for _, zone := range config.Zones {
-		switch zone.Type {
-		case "spiraldraw":
-			zones = append(zones, NewSpiralDraw(zone.Position, zone.Data))
+		var drawing Drawer
+
+		var fill FillGenerator
+		switch zone.Fill {
+		case "spiral", "":
+			fill = &SpiralFill{}
+		case "random":
+			fill = &RandomFill{}
+
 		default:
-			log.Fatal("invalid zone type: %s", zone.Type)
+			log.Fatalf("invalid fill type: %s", zone.Fill)
+
 		}
+
+		switch zone.Draw {
+		case "bitmap", "":
+			drawing = NewBitmapDraw(zone.Position, fill, zone.Data)
+		default:
+			log.Fatalf("invalid zone type: %s", zone.Draw)
+		}
+
+		drawings = append(drawings, drawing)
 	}
 
 	go updateBitmap()
 
+	// wait for bitmap
+	for Bitmap == nil {
+		time.Sleep(time.Second)
+	}
+
 	for _, user := range config.Users {
-		go userHandler(user, zones)
+		go userHandler(user, drawings)
+		time.Sleep(time.Second)
 	}
 
 	select {}
@@ -60,8 +82,10 @@ type User struct {
 }
 
 type Zone struct {
+	Skip     bool   `yaml:"skip"`
 	Position []int  `yaml:"position,flow"`
-	Type     string `yaml:"type"`
+	Draw     string `yaml:"draw"`
+	Fill     string `yaml:"fill"`
 	Data     string `yaml:"data"`
 }
 
@@ -83,7 +107,7 @@ func updateBitmap() {
 		log.Fatal(err)
 	}
 
-	timer := time.Tick(5 * time.Minute)
+	timer := time.Tick(3 * time.Minute)
 	changes := ReadChanges(c)
 
 	for {
@@ -108,21 +132,14 @@ var drawSync sync.Mutex
 func userHandler(user User, drawer Drawer) {
 	c, err := NewClient(user)
 	if err != nil {
-		log.Fatal(user.User, err)
+		log.Fatalf("%s: could not log in: %v", user.User, err)
 	}
 
-	// wait for bitmap
-	for Bitmap == nil {
-		time.Sleep(time.Second)
-	}
+	log.Printf("%s logged in", user.User)
 
 	wait, err := c.WaitTime()
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	if wait > 0 {
-		log.Printf("%s waiting %v", user.User, wait)
 	}
 
 	for {
@@ -131,16 +148,19 @@ func userHandler(user User, drawer Drawer) {
 
 		t := drawer.Next()
 		if t == nil {
-			wait = time.Second
+			wait = 1 * time.Second
+			drawSync.Unlock()
 			continue
 		}
 
-		Bitmap[t.Y][t.X] = t.Color
-
 		wait, err = c.Draw(*t)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("user %s failed to draw: %s", user.User, err)
+			drawSync.Unlock()
+			return
 		}
+
+		Bitmap[t.Y][t.X] = t.Color
 
 		drawSync.Unlock()
 		log.Printf("%s has drawn %d at (%d, %d), waiting %v", user.User, t.Color, t.X, t.Y, wait)

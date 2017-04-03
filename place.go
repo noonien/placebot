@@ -133,7 +133,7 @@ func getWSURL() (string, error) {
 	}
 
 	wsURL := wsURLRe.FindString(string(body))
-	if wsURL == "" {
+	if len(wsURL) == 0 {
 		return "", errors.New("could not find websocket url")
 	}
 
@@ -193,12 +193,12 @@ func NewClient(u User) (*Client, error) {
 	}
 
 	headers := headerRoundTripper{
-		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36 OPR/43.0.2442.1144",
+		"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36 OPR/43.0.2442.1144 " + u.User,
 	}
 
 	client := &http.Client{
 		Jar:       jar,
-		Transport: headers,
+		Transport: retryTransport{headers},
 	}
 
 	res, err := client.PostForm(loginURL+u.User, url.Values{
@@ -210,26 +210,30 @@ func NewClient(u User) (*Client, error) {
 		return nil, err
 	}
 
-	res, err = client.Get(meURL)
+	var lr struct {
+		JSON struct {
+			Data struct {
+				Errors  [][]string `json:"errors"`
+				ModHash string     `json:"modhash"`
+			} `json:"data"`
+		} `json:"json"`
+	}
+	err = decodeJSON(res, &lr)
 	if err != nil {
 		return nil, err
 	}
 
-	var mhr struct {
-		Data struct {
-			ModHash string `json:"modhash"`
-		} `json:"data"`
-	}
-	err = decodeJSON(res, &mhr)
-	if err != nil {
-		return nil, err
+	data := lr.JSON.Data
+
+	if len(data.Errors) > 0 {
+		return nil, errors.New(data.Errors[0][1])
 	}
 
-	if mhr.Data.ModHash == "" {
+	if len(data.ModHash) == 0 {
 		return nil, errors.New("could not login")
 	}
 
-	headers["x-modhash"] = mhr.Data.ModHash
+	headers["x-modhash"] = data.ModHash
 
 	return &Client{
 		c: client,
@@ -259,13 +263,22 @@ func (c *Client) Draw(t Tile) (time.Duration, error) {
 		"y":     {strconv.Itoa(t.Y)},
 		"color": {strconv.Itoa(int(t.Color))},
 	})
+	if err != nil {
+		return 0, err
+	}
 
 	var tr struct {
+		Message     string  `json:"message"`
 		WaitSeconds float64 `json:"wait_seconds"`
 	}
+
 	err = decodeJSON(res, &tr)
 	if err != nil {
 		return 0, err
+	}
+
+	if len(tr.Message) > 0 {
+		return 0, errors.New(tr.Message)
 	}
 
 	return time.Duration(math.Floor(tr.WaitSeconds+.99)) * time.Second, nil
@@ -300,4 +313,43 @@ func (rt headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	}
 
 	return http.DefaultTransport.RoundTrip(req)
+}
+
+type retryTransport struct {
+	Next http.RoundTripper
+}
+
+func (rt retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	var buf bytes.Buffer
+	if req.Body != nil {
+		_, err := io.Copy(&buf, req.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		err = req.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for {
+		req.Body = ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
+
+		res, err := rt.Next.RoundTrip(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if res.StatusCode == http.StatusTooManyRequests {
+			continue
+
+		}
+
+		if res.StatusCode >= 500 {
+			continue
+		}
+
+		return res, err
+	}
 }

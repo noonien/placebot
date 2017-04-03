@@ -21,15 +21,16 @@ func (m MultiDrawer) Next() *Tile {
 	return nil
 }
 
-type SpiralDraw struct {
+type BitmapDraw struct {
 	Position []int
+	Fill     FillGenerator
 	Bitmap   [][]byte
 
 	width  int
 	height int
 }
 
-func NewSpiralDraw(pos []int, data string) *SpiralDraw {
+func NewBitmapDraw(pos []int, fill FillGenerator, data string) *BitmapDraw {
 	bitmap := parseBitmap(data)
 
 	width := 0
@@ -40,51 +41,39 @@ func NewSpiralDraw(pos []int, data string) *SpiralDraw {
 	}
 	height := len(bitmap)
 
-	sd := &SpiralDraw{
+	return &BitmapDraw{
 		Position: pos,
+		Fill:     fill,
 		Bitmap:   bitmap,
 		width:    width,
 		height:   height,
 	}
-	return sd
 }
 
-func (sd *SpiralDraw) Next() *Tile {
-	cX, cY := sd.width/2, sd.height/2
+func (b *BitmapDraw) Next() *Tile {
+	b.Fill.Reset(b.width, b.height)
 
-	x, y := 0, 0
-	dx, dy := 0, -1
-
-	max := sd.width
-	if sd.height > max {
-		max = sd.height
-	}
-
-	for i := 0; i <= max*max; i++ {
-		posX, posY := cX+x-1, cY+y-1
-		if 0 <= posX && posX < sd.width && 0 <= posY && posY < sd.height {
-			newTile := sd.checkPos(posX, posY)
-			if newTile != nil {
-				return newTile
-			}
+	for {
+		pos := b.Fill.Next()
+		if pos == nil {
+			break
 		}
 
-		if x == y || (x < 0 && x == -y) || (x > 0 && x == 1-y) {
-			dx, dy = -dy, dx
+		tile := b.checkPos(pos[0], pos[1])
+		if tile != nil {
+			return tile
 		}
-
-		x, y = x+dx, y+dy
 	}
 
 	return nil
 }
 
-func (sd *SpiralDraw) checkPos(x, y int) *Tile {
-	if y > sd.height {
+func (b *BitmapDraw) checkPos(x, y int) *Tile {
+	if y > b.height {
 		return nil
 	}
 
-	row := sd.Bitmap[y]
+	row := b.Bitmap[y]
 	if x > len(row) {
 		return nil
 	}
@@ -94,7 +83,7 @@ func (sd *SpiralDraw) checkPos(x, y int) *Tile {
 		return nil
 	}
 
-	absX, absY := sd.Position[0]+x, sd.Position[1]+y
+	absX, absY := b.Position[0]+x, b.Position[1]+y
 	if absX > 1000 || absY > 1000 {
 		return nil
 	}
