@@ -118,3 +118,37 @@ func (f *RandomFill) Next() []int {
 	f.iters -= 1
 	return []int{x % f.width, x / f.height}
 }
+
+type RowFill struct {
+	Inverted bool
+
+	width  int
+	height int
+
+	i int
+}
+
+func (f *RowFill) Reset(width, height int) {
+	*f = RowFill{
+		Inverted: f.Inverted,
+
+		width:  width,
+		height: height,
+	}
+}
+
+func (f *RowFill) Next() []int {
+	width, height, i := f.width, f.height, f.i
+	total := width * height
+
+	if i >= total {
+		return nil
+	}
+
+	if f.Inverted {
+		i = total - 1 - i
+	}
+
+	f.i += 1
+	return []int{i % width, i / height}
+}

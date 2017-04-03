@@ -44,6 +44,10 @@ func main() {
 			fill = &SpiralFill{}
 		case "random":
 			fill = &RandomFill{}
+		case "rows":
+			fill = &RowFill{}
+		case "rows-inverted":
+			fill = &RowFill{Inverted: true}
 
 		default:
 			log.Fatalf("invalid fill type: %s", zone.Fill)
