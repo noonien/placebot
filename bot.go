@@ -80,8 +80,8 @@ func main() {
 }
 
 type Config struct {
-	Users []User           `yaml:"users"`
-	Zones map[string]*Zone `yaml:"zones"`
+	Users []User `yaml:"users"`
+	Zones []Zone `yaml:"zones"`
 }
 
 type User struct {
@@ -150,23 +150,33 @@ func userHandler(user User, drawer Drawer) {
 		log.Fatal(err)
 	}
 
+	var fails int
+
 	for {
 		time.Sleep(wait)
 		drawSync.Lock()
 
 		t := drawer.Next()
 		if t == nil {
-			wait = 1 * time.Second
+			wait = time.Second
 			drawSync.Unlock()
 			continue
 		}
 
 		wait, err = c.Draw(*t)
 		if err != nil {
-			log.Printf("user %s failed to draw: %s", user.User, err)
 			drawSync.Unlock()
-			return
+
+			fails += 1
+			if fails == 3 {
+				log.Printf("user %s failed to draw: %s", user.User, err)
+				return
+			}
+
+			wait = 2 * time.Second
+			continue
 		}
+		fails = 0
 
 		Bitmap[t.Y][t.X] = t.Color
 
