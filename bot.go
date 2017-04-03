@@ -171,6 +171,6 @@ func userHandler(user User, drawer Drawer) {
 		Bitmap[t.Y][t.X] = t.Color
 
 		drawSync.Unlock()
-		log.Printf("%s has drawn %d at (%d, %d), waiting %v", user.User, t.Color, t.X, t.Y, wait)
+		log.Printf("%s has drawn %d at (%d, %d)", user.User, t.Color, t.X, t.Y)
 	}
 }
