@@ -116,7 +116,7 @@ func (f *RandomFill) Next() []int {
 
 	f.x = x
 	f.iters -= 1
-	return []int{x % f.width, x / f.height}
+	return []int{x % f.width, x / f.width}
 }
 
 type RowFill struct {
@@ -150,5 +150,5 @@ func (f *RowFill) Next() []int {
 	}
 
 	f.i += 1
-	return []int{i % width, i / height}
+	return []int{i % width, i / width}
 }
