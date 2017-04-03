@@ -32,6 +32,10 @@ func main() {
 
 	var drawings MultiDrawer
 	for _, zone := range config.Zones {
+		if zone.Skip {
+			continue
+		}
+
 		var drawing Drawer
 
 		var fill FillGenerator
